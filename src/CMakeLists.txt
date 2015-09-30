@@ -163,7 +163,7 @@ if( HAS_NURBS_LIB )
     )
 endif( HAS_NURBS_LIB )
 
-add_library( iges SHARED
+add_library( iges_core OBJECT
     "${SRC_ENT}/iges_entity.cpp"
     "${SRC_ENT}/iges_curve.cpp"
     "${SRC_ENT}/entityNULL.cpp"
@@ -214,6 +214,9 @@ add_library( iges SHARED
     "${SRC_GEOM}/mcad_helpers.cpp"
     ${NURBS_DEPS}
     )
+
+add_library( iges SHARED $<TARGET_OBJECTS:iges_core> )
+add_library( iges_static STATIC $<TARGET_OBJECTS:iges_core> )
 
 if( USE_SISL AND SISL_NEEDS_BUILD )
     add_dependencies( iges sisl_submod )
