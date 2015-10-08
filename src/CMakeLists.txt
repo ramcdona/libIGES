@@ -266,3 +266,14 @@ if( HAS_NURBS_LIB )
     add_subdirectory( idf )
 
 endif(HAS_NURBS_LIB)
+
+install( DIRECTORY include/ DESTINATION include )
+install( FILES ${LIBIGES_BINARY_DIR}/libigesconf.h DESTINATION include )
+
+FILE(GLOB dllheaders "dllapi/*.h")
+install( FILES ${dllheaders} DESTINATION include )
+
+install( TARGETS iges iges_static
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+)
