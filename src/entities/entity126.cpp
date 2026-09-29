@@ -1105,10 +1105,47 @@ bool IGES_ENTITY_126::SetNURBSData( int nCoeff, int order, const double* knot,
     else
         PROP1 = 0;
 
-    PROP2 = 0;  // assume an open curve (PROP2 value required by spec; unknown if anyone uses it)
+    // closed where the curve meets itself: clamped over its whole knot range, with its
+    // first and last control points the same
+    PROP2 = 0;
     PROP4 = 0;  // assume a non-periodic curve (PROP4 value is purely informational)
 
-    // XXX - TO BE IMPLEMENTED: evaluate the NURBS at the first and last points
+    int stride = 3;
+
+    if( isRational )
+        stride = 4;
+
+    bool clamped = ( v0 == knot[0] && v1 == knot[nKnots - 1]
+        && knot[0] == knot[order - 1] && knot[nKnots - 1] == knot[nKnots - order] );
+
+    if( clamped && nCoeffs > 2 )
+    {
+        double size = 0.0;
+
+        for( int i = 1; i < nCoeffs; ++i )
+        {
+            double d = 0.0;
+
+            for( int k = 0; k < 3; ++k )
+                d += ( coeffs[i * stride + k] - coeffs[k] ) * ( coeffs[i * stride + k] - coeffs[k] );
+
+            if( d > size )
+                size = d;
+        }
+
+        size = sqrt( size );
+
+        bool closed = ( size > 0.0 );
+
+        for( int k = 0; k < stride && closed; ++k )
+        {
+            if( fabs( coeffs[k] - coeffs[( nCoeffs - 1 ) * stride + k] ) > 1e-9 * size )
+                closed = false;
+        }
+
+        if( closed )
+            PROP2 = 1;
+    }
 
     // note: Since PROP4 is only informational there will be no attempt to determine periodicity
 

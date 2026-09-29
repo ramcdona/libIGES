@@ -25,6 +25,7 @@
  */
 
 #include <sstream>
+#include <cmath>
 #include <error_macros.h>
 #include <core/iges.h>
 #include <core/iges_io.h>
@@ -1086,12 +1087,87 @@ bool IGES_ENTITY_128::SetNURBSData( int nCoeff1, int nCoeff2, int order1, int or
         coeffs[i] = coeff[i];
 
 
-    // XXX - TO BE IMPLEMENTED: determine closure on U (PROP1) and V (PROP2)
-    // for now we set the surface as Open in U and Open in V unless the user
-    // specified periodicity in U, V in which case the surface must also
-    // be closed in those parameters
+    // closed in a parameter where the surface meets itself: clamped over its whole
+    // knot range, with its first and last rows of control points the same
     PROP1 = 0;
     PROP2 = 0;
+
+    int stride = 3;
+
+    if( isRational )
+        stride = 4;
+
+    double lo[3];
+    double hi[3];
+
+    for( int k = 0; k < 3; ++k )
+    {
+        lo[k] = coeffs[k];
+        hi[k] = coeffs[k];
+    }
+
+    for( int i = 0; i < nCoeffs1 * nCoeffs2; ++i )
+    {
+        for( int k = 0; k < 3; ++k )
+        {
+            double c = coeffs[i * stride + k];
+
+            if( c < lo[k] )
+                lo[k] = c;
+
+            if( c > hi[k] )
+                hi[k] = c;
+        }
+    }
+
+    double size = sqrt( ( hi[0] - lo[0] ) * ( hi[0] - lo[0] ) + ( hi[1] - lo[1] ) * ( hi[1] - lo[1] )
+        + ( hi[2] - lo[2] ) * ( hi[2] - lo[2] ) );
+    double tol = 1e-9 * size;
+
+    bool clamped1 = ( u0 == knot1[0] && u1 == knot1[nKnots1 - 1]
+        && knot1[0] == knot1[order1 - 1] && knot1[nKnots1 - 1] == knot1[nKnots1 - order1] );
+    bool clamped2 = ( v0 == knot2[0] && v1 == knot2[nKnots2 - 1]
+        && knot2[0] == knot2[order2 - 1] && knot2[nKnots2 - 1] == knot2[nKnots2 - order2] );
+
+    if( size > 0.0 && clamped1 )
+    {
+        bool closed = true;
+
+        for( int j = 0; j < nCoeffs2 && closed; ++j )
+        {
+            int i0 = ( j * nCoeffs1 ) * stride;
+            int i1 = ( j * nCoeffs1 + nCoeffs1 - 1 ) * stride;
+
+            for( int k = 0; k < stride && closed; ++k )
+            {
+                if( fabs( coeffs[i0 + k] - coeffs[i1 + k] ) > tol )
+                    closed = false;
+            }
+        }
+
+        if( closed )
+            PROP1 = 1;
+    }
+
+    if( size > 0.0 && clamped2 )
+    {
+        bool closed = true;
+
+        for( int i = 0; i < nCoeffs1 && closed; ++i )
+        {
+            int i0 = i * stride;
+            int i1 = ( ( nCoeffs2 - 1 ) * nCoeffs1 + i ) * stride;
+
+            for( int k = 0; k < stride && closed; ++k )
+            {
+                if( fabs( coeffs[i0 + k] - coeffs[i1 + k] ) > tol )
+                    closed = false;
+            }
+        }
+
+        if( closed )
+            PROP2 = 1;
+    }
 
     if( isPeriodic1 )
     {
