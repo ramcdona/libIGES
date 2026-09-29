@@ -25,6 +25,8 @@
  */
 
 #include <sstream>
+#include <vector>
+#include <cmath>
 #include <error_macros.h>
 #include <core/iges.h>
 #include <core/iges_io.h>
@@ -1116,74 +1118,95 @@ bool IGES_ENTITY_126::SetNURBSData( int nCoeff, int order, const double* knot,
 
 bool IGES_ENTITY_126::hasUniquePlane( MCAD_POINT* norm )
 {
-    // if we have a line (or no data) return false
+    MCAD_POINT tnorm;
+
+    if( NULL == norm )
+        norm = &tnorm;
+
+    norm->x = 0.0;
+    norm->y = 0.0;
+    norm->z = 1.0;
+
+    // if we have a line (or no data) there is no unique plane
     if( nCoeffs < 3 )
-    {
-        norm->x = 0.0;
-        norm->y = 0.0;
-        norm->z = 1.0;
         return false;
+
+    int stride = 3;
+
+    if( 0 == PROP3 )
+        stride = 4;
+
+    std::vector< MCAD_POINT > pts( nCoeffs );
+
+    for( int i = 0; i < nCoeffs; ++i )
+    {
+        pts[i].x = coeffs[i * stride];
+        pts[i].y = coeffs[i * stride + 1];
+        pts[i].z = coeffs[i * stride + 2];
     }
 
-    // we must test for planarity by taking the normal vector of every
-    // 3 control points; if all normals are equal (or anti) then we have a plane
-    MCAD_POINT p0;
-    MCAD_POINT p1;
-    MCAD_POINT p2;
+    // the plane through the first point, the point farthest from it, and the point
+    // farthest from the line through those two; collinear points have no unique plane
+    int ia = 0;
+    double da = 0.0;
 
-    MCAD_POINT* pts[3] = { &p0, &p1, &p2 };
-
-    int i = 0;
-    int j = 0;
-
-    MCAD_POINT tnorm0;
-    MCAD_POINT tnorm1;
-
-    for( i = 0; i < 3; ++i )
+    for( int i = 1; i < nCoeffs; ++i )
     {
-        pts[i]->x = coeffs[j++];
-        pts[i]->y = coeffs[j++];
-        pts[i]->z = coeffs[j++];
+        MCAD_POINT d = pts[i] - pts[0];
+        double dd = d.x * d.x + d.y * d.y + d.z * d.z;
 
-        if( 0 == PROP3 )
-            ++j;
-    }
-
-    CalcNormal( &p0, &p1, &p2, norm );
-
-    if( nCoeffs == 3 )
-        return true;
-
-    tnorm0 = *norm;
-    MCAD_POINT* px;
-
-    for( i = 3; i < nCoeffs; ++i )
-    {
-        px = pts[0];
-        pts[0] = pts[1];
-        pts[1] = pts[2];
-        pts[2] = px;
-
-        pts[2]->x = coeffs[j++];
-        pts[2]->y = coeffs[j++];
-        pts[2]->z = coeffs[j++];
-
-        if( 0 == PROP3 )
-            ++j;
-
-        CalcNormal( pts[0], pts[1], pts[2], &tnorm1 );
-
-        if( !PointMatches( tnorm0, tnorm1, 1e-8 )
-            && !PointMatches( tnorm0, tnorm1 * -1.0, 1e-8 ) )
+        if( dd > da )
         {
-            norm->x = 0.0;
-            norm->y = 0.0;
-            norm->z = 1.0;
-            return false;
+            da = dd;
+            ia = i;
         }
-
-        tnorm0 = tnorm1;
     }
 
+    if( 0 == ia )
+        return false;
+
+    double size = sqrt( da );
+    MCAD_POINT t0 = pts[ia] - pts[0];
+    MCAD_POINT cn;
+    double dn = 0.0;
+
+    for( int i = 1; i < nCoeffs; ++i )
+    {
+        MCAD_POINT t1 = pts[i] - pts[0];
+        MCAD_POINT c;
+        c.x = t0.y * t1.z - t0.z * t1.y;
+        c.y = t0.z * t1.x - t0.x * t1.z;
+        c.z = t0.x * t1.y - t0.y * t1.x;
+
+        double dc = sqrt( c.x * c.x + c.y * c.y + c.z * c.z );
+
+        if( dc > dn )
+        {
+            dn = dc;
+            cn = c;
+        }
+    }
+
+    // the farthest point off the line must be off it by more than rounding
+    double tol = 1e-9 * size;
+
+    if( dn <= tol * size )
+        return false;
+
+    cn.x /= dn;
+    cn.y /= dn;
+    cn.z /= dn;
+
+    // every control point must lie in that plane
+    for( int i = 1; i < nCoeffs; ++i )
+    {
+        MCAD_POINT d = pts[i] - pts[0];
+        double h = d.x * cn.x + d.y * cn.y + d.z * cn.z;
+
+        if( h < -tol || h > tol )
+            return false;
+    }
+
+    *norm = cn;
     return true;
 }
