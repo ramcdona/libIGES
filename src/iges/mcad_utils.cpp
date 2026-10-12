@@ -307,7 +307,8 @@ const char* MCAD_FILEPATH::GetBaseName( void )
     {
         *m_basename = m_fullpath->substr( lastSep, lastDot - lastSep );
 
-        if( m_ext->empty() )
+        // A name without a dot has no extension
+        if( m_ext->empty() && lastDot < m_fullpath->size() )
             *m_ext = m_fullpath->substr( lastDot + 1 );
     }
     else
